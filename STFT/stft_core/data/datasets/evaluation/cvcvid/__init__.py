@@ -89,8 +89,8 @@ def vid_cvcvideo_evaluation(dataset, predictions, output_folder, visulize, vis_t
                     cv2.putText(img, '{:.2f}'.format(highscore_score[temp_idx]), (int(temp_bbox[0]+10), int(temp_bbox[1]+10)), cv2.FONT_HERSHEY_PLAIN, 1.2, (0,255,255), 2)
 
             cv2.imwrite(output_folder+'/'+filename.split('/')[-1]+'.jpg', img)
-            save_line += str(det_tp[image_id][0])+' '+str(det_fp[image_id][0])+' '+str(det_tn[image_id][0])+' '+str(det_fn[image_id][0])+' '
-            save_line += str(loc_tp[image_id][0])+' '+str(loc_fp[image_id][0])+' '+str(loc_fn[image_id][0])+'\n'
+            save_line += str(det_tp[image_id][0])+' '+str(det_fp[image_id][0])+' '+str(det_tn[image_id][0])+' '+str(det_fn[image_id][0])+'\n'
+            #save_line += str(loc_tp[image_id][0])+' '+str(loc_fp[image_id][0])+' '+str(loc_fn[image_id][0])+'\n'
             with open(output_folder+'/result.txt', 'a+') as save_file:
                 save_file.write(save_line)
 
