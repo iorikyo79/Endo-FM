@@ -175,6 +175,9 @@ Then, we can install packages using provided `environment.yaml`.
 cd Endo-FM
 conda env create -f environment.yaml
 conda activate endofm
+
+conda install pytorch==1.8.0 torchvision==0.9.0 cudatoolkit=11.1.1 -c pytorch
+# pytorch, cuda 버전이 맞지 않으면 이후 작업에서 오류가 많이 발생하기 때문에 되도록이면 이 버전과 맞추도록함.
 ```
 
 #### Pre-trained Weights
@@ -210,7 +213,7 @@ cd Endo-FM/TransUNet
 python train.py
 
 # KUMC (Detection)
-cd Endo-FM/STMT
+cd Endo-FM/STFT
 python setup.py build develop
 python -m torch.distributed.launch \
     --nproc_per_node=1 \
@@ -231,7 +234,7 @@ cd Endo-FM/TransUNet
 python train.py --test
 
 # KUMC (Detection)
-cd Endo-FM/STMT
+cd Endo-FM/STFT
 python setup.py build develop
 python -m torch.distributed.launch \
     --nproc_per_node=1 \
