@@ -4,7 +4,9 @@ import time
 import os
 import cv2
 import torch
+import numpy as np
 from tqdm import tqdm
+from stft_core.structures.image_list import to_image_list
 
 from stft_core.data.datasets.evaluation import evaluate
 from ..utils.comm import is_main_process, get_world_size
@@ -88,7 +90,7 @@ def inference(
         expected_results=(),
         expected_results_sigma_tol=4,
         output_folder=None,
-        visulize=False,
+        visulize=True,
 ):
     # convert to a torch.device for efficiency
     device = torch.device(device)
@@ -136,6 +138,7 @@ def inference(
         expected_results_sigma_tol=expected_results_sigma_tol,
         visulize=visulize,
         vis_thr=cfg.TEST.VIS_THR,
+        iou_threshold=cfg.TEST.VIS_IOU,
     )
 
     return evaluate(dataset=dataset,
@@ -171,3 +174,67 @@ def inference_no_model(
                     predictions=predictions,
                     output_folder=output_folder,
                     **extra_args)
+
+
+def process_image(cfg, model, image_path, output_folder, device="cuda"):
+    # 이미지 로드 및 전처리
+    image = cv2.imread(image_path)
+    image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+    
+    # 이미지 크기 조정 (필요한 경우)
+    if cfg.INPUT.MIN_SIZE_TEST != -1:
+        print('!!!!!!!!!!!!!!!!resized!!!!!!!!!!!!!!!')
+        min_size = cfg.INPUT.MIN_SIZE_TEST
+        max_size = cfg.INPUT.MAX_SIZE_TEST
+        h, w = image.shape[:2]
+        if max(h, w) > max_size:
+            scale = float(max_size) / float(max(h, w))
+            image = cv2.resize(image, None, fx=scale, fy=scale)
+        elif min(h, w) < min_size:
+            scale = float(min_size) / float(min(h, w))
+            image = cv2.resize(image, None, fx=scale, fy=scale)
+
+    # 이미지를 텐서로 변환
+    image = torch.from_numpy(image.transpose(2, 0, 1)).float()
+    image = image.to(device)
+    image = to_image_list(image, cfg.DATALOADER.SIZE_DIVISIBILITY)
+
+    # 모델 추론
+    with torch.no_grad():
+        output = model(image)
+
+    # 결과 후처리
+    output = output[0].to(torch.device("cpu"))
+    boxes = output.bbox.tolist()
+    labels = output.get_field("labels").tolist()
+    scores = output.get_field("scores").tolist()
+
+    # 결과 저장
+    result = {
+        "boxes": boxes,
+        "labels": labels,
+        "scores": scores
+    }
+
+    # 결과를 파일로 저장
+    image_name = os.path.basename(image_path)
+    output_path = os.path.join(output_folder, f"{os.path.splitext(image_name)[0]}_result.json")
+    with open(output_path, "w") as f:
+        json.dump(result, f)
+
+    # 시각화 (선택적)
+    if cfg.TEST.VISUALIZE:
+        visualize_result(image_path, result, output_folder)
+
+    return result
+
+def visualize_result(image_path, result, output_folder):
+    image = cv2.imread(image_path)
+    for box, label, score in zip(result["boxes"], result["labels"], result["scores"]):
+        x1, y1, x2, y2 = map(int, box)
+        cv2.rectangle(image, (x1, y1), (x2, y2), (0, 255, 0), 2)
+        cv2.putText(image, f"{label}: {score:.2f}", (x1, y1 - 10),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.9, (0, 255, 0), 2)
+    
+    output_path = os.path.join(output_folder, f"{os.path.splitext(os.path.basename(image_path))[0]}_vis.jpg")
+    cv2.imwrite(output_path, image)

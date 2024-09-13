@@ -53,7 +53,8 @@ def main():
     parser.add_argument(
         "--visulize",
         action="store_true",
-        help="if True, recored result and visulize"
+        help="if True, recored result and visulize",
+        default=True
     )
     parser.add_argument("--master_port", "-mp", type=str, default='29999')
     parser.add_argument(

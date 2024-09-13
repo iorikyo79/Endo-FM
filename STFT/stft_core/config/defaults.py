@@ -593,7 +593,10 @@ _C.TEST.IMS_PER_BATCH = 8
 # Number of detections per image
 _C.TEST.DETECTIONS_PER_IMG = 100
 #
-_C.TEST.VIS_THR = 0.55
+#_C.TEST.VIS_THR = 0.55
+_C.TEST.VIS_THR = 0.5
+
+_C.TEST.VIS_IOU = 0.2
 
 # ---------------------------------------------------------------------------- #
 # Test-time augmentations for bounding box detection

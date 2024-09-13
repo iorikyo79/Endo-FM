@@ -1,46 +1,58 @@
 import os
 import numpy as np
+import torch
 from stft_core.structures.boxlist_ops import boxlist_iou
+from stft_core.structures.bounding_box import BoxList
 
-
-def cvcvideo_detection_eval(pred_boxlists, gt_boxlists, score_thrs):
+def cvcvideo_detection_eval(pred_boxlists, gt_boxlists, score_thrs, iou_threshold):
     assert len(gt_boxlists) == len(pred_boxlists), "Length of gt and pred lists need to be same."
 
     detection_tp = np.zeros((len(pred_boxlists), score_thrs.shape[0]), dtype=np.int)
     detection_fp = np.zeros((len(pred_boxlists), score_thrs.shape[0]), dtype=np.int)
     detection_tn = np.zeros((len(pred_boxlists), score_thrs.shape[0]), dtype=np.int)
     detection_fn = np.zeros((len(pred_boxlists), score_thrs.shape[0]), dtype=np.int)
-    pos_num=0
-    neg_num=0
 
     for idx, (gt_boxlist, pred_boxlist) in enumerate(zip(gt_boxlists, pred_boxlists)):
         gt_bbox = gt_boxlist.bbox.numpy()
         gt_label = gt_boxlist.get_field("labels").numpy()
-        if gt_label.sum()==0:
-            have_obj=False
-            neg_num+=1
-        else:
-            have_obj=True
-            pos_num+=1
+        num_gt = gt_label.sum()
 
         pred_bbox = pred_boxlist.bbox.numpy()
         pred_score = pred_boxlist.get_field("scores").numpy()
 
         for score_idx, score_thr in enumerate(score_thrs):
             det_inds = pred_score >= score_thr
-            highscore_score = pred_score[det_inds]
             highscore_bbox = pred_bbox[det_inds]
-
-            if highscore_bbox.shape[0]>0:
-                if have_obj:
-                    detection_tp[idx,score_idx]+=1
+            highscore_score = pred_score[det_inds]
+            
+            if highscore_bbox.shape[0] > 0 and num_gt > 0:
+                # IoU 계산
+                iou_matrix = boxlist_iou(
+                    BoxList(torch.from_numpy(highscore_bbox), gt_boxlist.size),
+                    BoxList(torch.from_numpy(gt_bbox), gt_boxlist.size)
+                ).numpy()
+                
+                # IoU 임계값을 넘는 예측 선택
+                valid_pred_mask = np.max(iou_matrix, axis=1) >= iou_threshold
+                valid_pred_scores = highscore_score[valid_pred_mask]
+                
+                if valid_pred_scores.size > 0:
+                    # 가장 높은 점수를 가진 예측 선택
+                    best_pred_idx = np.argmax(valid_pred_scores)
+                    max_iou = np.max(iou_matrix[valid_pred_mask][best_pred_idx])
+                    
+                    if max_iou >= iou_threshold:
+                        detection_tp[idx, score_idx] += 1
+                    else:
+                        detection_fp[idx, score_idx] += 1
                 else:
-                    detection_fp[idx,score_idx]+=1
+                    detection_fn[idx, score_idx] += 1
+            elif num_gt > 0:
+                detection_fn[idx, score_idx] += 1
+            elif highscore_bbox.shape[0] > 0:
+                detection_fp[idx, score_idx] += 1
             else:
-                if have_obj:
-                    detection_fn[idx,score_idx]+=1
-                else:
-                    detection_tn[idx,score_idx]+=1
+                detection_tn[idx, score_idx] += 1
 
     TP = np.sum(detection_tp, axis=0)
     FP = np.sum(detection_fp, axis=0)
@@ -49,17 +61,15 @@ def cvcvideo_detection_eval(pred_boxlists, gt_boxlists, score_thrs):
     det_pos = TP + FP
     det_neg = TN + FN
 
-    Precision = 100*TP/(TP+FP+1e-7)
-    Recall = 100*TP/(TP+FN+1e-7)
-    Accuracy = 100*(TP+TN)/(TP+TN+FP+FN+1e-7)
-    Specificity = 100*TN/(TN+FP+1e-7)
-    F1_score = 2*Precision*Recall/(Precision+Recall+1e-7)
-    F2_score = 5*Precision*Recall/(4*Precision + Recall+1e-7)
+    Precision = 100 * TP / (TP + FP + 1e-7)
+    Recall = 100 * TP / (TP + FN + 1e-7)
+    Accuracy = 100 * (TP + TN) / (TP + TN + FP + FN + 1e-7)
+    Specificity = 100 * TN / (TN + FP + 1e-7)
+    F1_score = 2 * Precision * Recall / (Precision + Recall + 1e-7)
+    F2_score = 5 * Precision * Recall / (4 * Precision + Recall + 1e-7)
 
     return np.vstack((Precision, Recall, Accuracy, Specificity, F1_score, F2_score)), \
         detection_tp, detection_fp, detection_tn, detection_fn
-
-
 
 #det_bbox: x1,y1,x2,y2
 #gt_box: x1,y1,x2,y2
